@@ -1,0 +1,10 @@
+name: platform-cli
+kind: tool
+owner: platform-team
+description: Golden-path CLI — scaffolding, catalog validation and preview lifecycle; also the janitor image.
+tier: t2
+lifecycle: production
+language: python
+links:
+  runbook: docs/runbooks/rb-001-preview-not-collected.md
+  source: platform-cli
