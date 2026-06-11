@@ -1,0 +1,9 @@
+# Template provenance — managed by Copier, do not edit by hand.
+# `copier update` uses this file to propagate template evolution to this service.
+_src_path: L:\Work\Code\andamio\templates\fastapi-service
+description: 'Reference FX quotes service: serves indicative exchange rates with golden-signal
+    metrics.'
+owner: team-markets
+port: 8000
+service_name: fx-rates
+tier: t3

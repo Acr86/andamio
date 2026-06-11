@@ -1,0 +1,23 @@
+# Build stage: resolve and install dependencies into an isolated venv.
+# Dependency layers are keyed on pyproject.toml only, so source-only changes
+# never re-download dependencies.
+FROM python:3.12-slim-bookworm AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.9 /uv /usr/local/bin/uv
+WORKDIR /build
+ENV VIRTUAL_ENV=/opt/venv
+RUN uv venv "$VIRTUAL_ENV"
+COPY pyproject.toml ./
+RUN uv pip install -r pyproject.toml
+COPY src/ src/
+RUN uv pip install --no-deps .
+
+# Runtime stage: no compiler, no package manager state, non-root user.
+FROM python:3.12-slim-bookworm
+RUN groupadd --gid 10001 app && \
+    useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    SERVICE_NAME=fx-rates
+USER app
+EXPOSE 8000
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

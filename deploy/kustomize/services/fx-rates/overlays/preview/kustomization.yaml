@@ -1,0 +1,8 @@
+# Preview overlay: one instance per labelled pull request. The ApplicationSet
+# sets the namespace (pr-<number>), the image tag (pr-<number>) and patches
+# the ingress host — this overlay only declares the shape.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - ingress.yaml

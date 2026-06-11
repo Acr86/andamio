@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+
+def test_healthz_is_alive() -> None:
+    response = client.get("/healthz")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+
+
+def test_readyz_is_ready() -> None:
+    response = client.get("/readyz")
+    assert response.status_code == 200
+
+
+def test_root_reports_identity() -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["service"] == "fx-rates"
+    assert body["owner"] == "team-markets"
+
+
+def test_metrics_exposes_http_histograms() -> None:
+    client.get("/")  # generate at least one observation
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "http_request_duration_seconds" in response.text

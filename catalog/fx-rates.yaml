@@ -1,0 +1,10 @@
+name: fx-rates
+kind: service
+owner: team-markets
+description: Reference FX quotes service: serves indicative exchange rates with golden-signal metrics.
+tier: t3
+lifecycle: experimental
+language: python
+template: fastapi-service
+links:
+  source: services/fx-rates
