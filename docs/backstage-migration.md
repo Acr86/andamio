@@ -2,7 +2,7 @@
 
 ## Position
 
-The catalog format is deliberately Backstage-shaped ([ADR-0008](adr/0008-backstage-shaped-catalog.md)).
+The catalog format is deliberately Backstage-shaped ([ADR-0008](adr/0008-catalog-cli-now-backstage-later.md)).
 Every field in `catalog/<name>.yaml` has a one-to-one home in a Backstage Component entity, so
 the migration is a mechanical export, not a remodel. We run it when the triggers in the ADR fire
 — multiple teams, entity search at scale, an RBAC'd UI — and not before.
