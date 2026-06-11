@@ -1,0 +1,48 @@
+# Nightly drift detection — the blueprint's runnable edge. With no cloud
+# wired up (repository variable ENABLE_CLOUD unset) the job documents itself
+# and exits; with credentials and a state backend it runs
+# `terraform plan -detailed-exitcode` and fails loudly on drift (exit 2),
+# which is the alert. Drift you only discover during the next deploy is an
+# incident with extra steps.
+name: drift
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cloud: [aws, gcp]
+        environment: [staging, prod]
+    steps:
+      - name: Cloud disabled — explain and exit
+        if: vars.ENABLE_CLOUD != 'true'
+        run: |
+          {
+            echo "## Drift check skipped (${{ matrix.environment }}/${{ matrix.cloud }})"
+            echo
+            echo "This repository's Terraform is a validated blueprint with no live"
+            echo "state. To arm this job: configure a state backend in the env root,"
+            echo "provision the cicd-identity module (keyless OIDC), set the"
+            echo "ENABLE_CLOUD repository variable to 'true', and add the cloud"
+            echo "auth step documented in infra/terraform/README.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        if: vars.ENABLE_CLOUD == 'true'
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        if: vars.ENABLE_CLOUD == 'true'
+      - name: Plan with detailed exit code (2 = drift = red)
+        if: vars.ENABLE_CLOUD == 'true'
+        run: |
+          dir="infra/terraform/envs/${{ matrix.environment }}/${{ matrix.cloud }}"
+          terraform -chdir="$dir" init -input=false
+          terraform -chdir="$dir" plan -detailed-exitcode -input=false

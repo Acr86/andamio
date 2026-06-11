@@ -1,0 +1,35 @@
+# When CI fails, classify the failure before a human reads raw logs:
+# rules-first (deterministic regex taxonomy), LLM-assisted only when a key is
+# configured. The output lands in the run's job summary — triage starts with
+# a hypothesis, not a wall of text.
+name: aiops-triage
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  triage:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "aiops/ci-triage/uv.lock"
+      - name: Classify the failed run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run --project aiops/ci-triage ci-triage \
+            --repo "$GITHUB_REPOSITORY" \
+            --run-id "${{ github.event.workflow_run.id }}" \
+            --format markdown >> "$GITHUB_STEP_SUMMARY"

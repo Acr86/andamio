@@ -1,0 +1,185 @@
+# Main pipeline. The `changes` job is the routing brain: it inspects the diff
+# and fans out only the jobs the change actually needs — a docs-only PR runs
+# lint, a one-service PR tests and scans exactly that service. Feedback time
+# scales with the size of the change, not the size of the repository.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      cli: ${{ steps.filter.outputs.cli }}
+      services: ${{ steps.filter.outputs.services }}
+      services_list: ${{ steps.services.outputs.list }}
+      templates: ${{ steps.filter.outputs.templates }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+      aiops: ${{ steps.filter.outputs.aiops }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: filter
+        with:
+          list-files: json
+          filters: |
+            cli:
+              - 'platform-cli/**'
+            services:
+              - 'services/**'
+            templates:
+              - 'templates/**'
+            deploy:
+              - 'deploy/**'
+              - 'infra/local/**'
+              - 'scripts/**'
+            aiops:
+              - 'aiops/**'
+      - name: Derive changed-service matrix
+        id: services
+        env:
+          FILES: ${{ steps.filter.outputs.services_files }}
+        run: |
+          list=$(echo "$FILES" | jq -c '[.[] | split("/")[1]] | unique')
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "changed services: $list"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-platform
+      - name: Ruff (lint + format)
+        run: |
+          uv run --project platform-cli ruff check platform-cli services aiops
+          uv run --project platform-cli ruff format --check platform-cli services aiops
+      - name: Shellcheck
+        run: shellcheck scripts/*.sh
+      - name: Actionlint
+        run: |
+          curl -sSfL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz \
+            | tar xz actionlint
+          ./actionlint -color
+
+  catalog:
+    # The catalog cannot drift: schema + cross-checks against the repo tree.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: ./.github/actions/setup-platform
+      - name: Validate catalog consistency
+        run: uv run --project platform-cli platform validate
+      - name: Render portal page
+        run: uv run --project platform-cli platform catalog render
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: catalog-page
+          path: dist/catalog/index.html
+
+  cli-tests:
+    needs: changes
+    if: needs.changes.outputs.cli == 'true' || needs.changes.outputs.templates == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "platform-cli/uv.lock"
+      - name: CLI test suite (includes template golden tests)
+        run: uv run --project platform-cli pytest platform-cli/tests
+
+  service-ci:
+    needs: changes
+    if: needs.changes.outputs.services == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.changes.outputs.services_list) }}
+    uses: ./.github/workflows/reusable-service-ci.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      service: ${{ matrix.service }}
+      # PR images are pushed so the preview generator and the release
+      # promotion can reuse the exact scanned digest. Fork PRs build and
+      # scan but cannot push.
+      push: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      tag: pr-${{ github.event.pull_request.number }}
+
+  manifests:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true' || needs.changes.outputs.services == 'true' || needs.changes.outputs.templates == 'true'
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFORM_VERSION: v0.7.0
+      CONFTEST_VERSION: "0.62.0"
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install kubeconform and conftest
+        run: |
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" | tar xz kubeconform
+          curl -sSfL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar xz conftest
+      - name: Policy unit tests (the policies themselves are tested)
+        run: ./conftest verify --policy policy/kubernetes
+      - name: Render and check every kustomize target
+        run: |
+          mkdir -p rendered
+          for overlay in deploy/kustomize/services/*/overlays/* deploy/kustomize/platform; do
+            name=$(echo "$overlay" | tr '/' '_')
+            kubectl kustomize "$overlay" > "rendered/${name}.yaml"
+          done
+          ./kubeconform -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered/
+          ./conftest test --policy policy/kubernetes rendered/
+
+  e2e-bootstrap:
+    # The README's one-command promise, enforced by CI: the same bootstrap a
+    # reviewer runs on a laptop runs here on every change that could break it.
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true' || needs.changes.outputs.services == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - name: Install k3d (pinned in versions.env)
+        run: |
+          source infra/local/versions.env
+          curl -sSfL https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG="$K3D_VERSION" bash
+      - name: Bootstrap the platform (cluster + Argo CD + root app)
+        run: bash scripts/bootstrap.sh
+      - name: Deploy fx-rates through the inner loop
+        run: bash scripts/deploy-local.sh fx-rates
+      - name: Service answers through the platform ingress
+        run: |
+          curl -fsS http://fx-rates.127.0.0.1.nip.io:8080/healthz
+          curl -fsS "http://fx-rates.127.0.0.1.nip.io:8080/rates?base=MXN"
+      - name: Janitor safety smoke (refuses to reap fresh namespaces)
+        run: |
+          kubectl create namespace pr-9999
+          kubectl label namespace pr-9999 andamio.dev/preview=true
+          uv_bin=$(command -v uv || true)
+          if [ -z "$uv_bin" ]; then curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH="$HOME/.local/bin:$PATH"; fi
+          uv run --project platform-cli platform preview gc --orphans --dry-run
+          kubectl get namespace pr-9999 -o name

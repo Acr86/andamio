@@ -1,0 +1,101 @@
+# Preview environments, CI side. Adding the `preview` label builds and
+# publishes pr-<N> images for the full stack; the cluster-side ApplicationSet
+# pull-request generator materializes namespace pr-<N> from them. Closing the
+# PR (or dropping the label) prunes the environment; the janitor reclaims the
+# namespace.
+name: preview
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'preview') &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.list.outputs.services }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - id: list
+        name: Every service ships in the preview (complete environment per PR)
+        run: |
+          services=$(find services -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | jq -R . | jq -sc .)
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "preview will include: $services"
+
+  images:
+    needs: discover
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.discover.outputs.services) }}
+    uses: ./.github/workflows/reusable-service-ci.yml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      service: ${{ matrix.service }}
+      push: true
+      tag: pr-${{ github.event.pull_request.number }}
+
+  comment:
+    needs: [discover, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Compose preview summary
+        id: body
+        env:
+          SERVICES: ${{ needs.discover.outputs.services }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo 'body<<EOF'
+            echo "### Preview environment \`pr-${PR}\`"
+            echo
+            echo "Images are published; a cluster running the platform materializes"
+            echo "this environment within the generator's polling interval (≤5 min)."
+            echo
+            echo "| Service | Image | URL on a local cluster |"
+            echo "|---|---|---|"
+            for svc in $(echo "$SERVICES" | jq -r '.[]'); do
+              echo "| ${svc} | \`ghcr.io/acr86/andamio/${svc}:pr-${PR}\` | http://pr-${PR}.${svc}.127.0.0.1.nip.io:8080/ |"
+            done
+            echo
+            echo "Closing this PR prunes the environment; the janitor reclaims the namespace."
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: preview
+          message: ${{ steps.body.outputs.body }}
+
+  reclaimed:
+    if: github.event.action == 'closed' && contains(github.event.pull_request.labels.*.name, 'preview')
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2
+        with:
+          header: preview
+          message: |
+            ### Preview environment `pr-${{ github.event.pull_request.number }}`
+
+            The pull request closed: the Application set pruned the deployment and
+            the janitor reclaims the namespace on its next pass. Images with the
+            `pr-${{ github.event.pull_request.number }}` tag are garbage-collected
+            by the registry's untagged/cleanup policy.

@@ -32,3 +32,6 @@ Thumbs.db
 
 # Demo recordings (only the .tape source is committed)
 *.cast
+
+# Terraform plugin cache (local)
+.tfcache/

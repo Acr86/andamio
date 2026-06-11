@@ -1,0 +1,13 @@
+name: setup-platform
+description: Install uv and sync the platform CLI environment (cached).
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: "platform-cli/uv.lock"
+    - name: Sync CLI environment
+      shell: bash
+      run: uv sync --project platform-cli --extra dev

@@ -1,0 +1,91 @@
+# Per-service pipeline, called once per changed service by ci.yml and once
+# per service by preview.yml. Test -> build (cached) -> scan -> push.
+# The digest produced here is the only artifact that ever reaches an
+# environment: release.yml promotes it by digest, never rebuilds.
+name: service-ci
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Service name under services/
+        required: true
+        type: string
+      push:
+        description: Push the image to GHCR after a clean scan
+        required: false
+        type: boolean
+        default: false
+      tag:
+        description: Image tag to publish (e.g. pr-42)
+        required: false
+        type: string
+        default: ""
+    outputs:
+      digest:
+        description: Image digest of the pushed image (empty when push=false)
+        value: ${{ jobs.service.outputs.digest }}
+
+permissions:
+  contents: read
+
+jobs:
+  service:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    env:
+      IMAGE: ghcr.io/acr86/andamio/${{ inputs.service }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "services/${{ inputs.service }}/uv.lock"
+
+      - name: Test suite
+        working-directory: services/${{ inputs.service }}
+        run: uv run --extra dev --project . pytest
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build image (cached, not yet pushed)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: services/${{ inputs.service }}
+          load: true
+          tags: ${{ env.IMAGE }}:scan
+          cache-from: type=gha,scope=${{ inputs.service }}
+          cache-to: type=gha,scope=${{ inputs.service }},mode=max
+
+      - name: Vulnerability scan (gate)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:scan
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Login to GHCR
+        if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push scanned image
+        if: inputs.push
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: services/${{ inputs.service }}
+          push: true
+          tags: ${{ env.IMAGE }}:${{ inputs.tag }}
+          cache-from: type=gha,scope=${{ inputs.service }}

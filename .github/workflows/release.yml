@@ -1,0 +1,131 @@
+# Release = promotion, not rebuild. Merging to main re-tags the exact digest
+# that was tested and scanned in the pull request (crane tag, no build). The
+# image bytes that reach an environment are byte-identical to what CI
+# validated. Each promoted digest is signed (keyless, GitHub OIDC) and gets
+# an SBOM. A direct push to main (no PR image to promote) falls back to
+# build-and-push — the bootstrap path, visible in the logs when it happens.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.diff.outputs.services }}
+      cli: ${{ steps.diff.outputs.cli }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: What does this push actually change?
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] || [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE" 2>/dev/null; then
+            echo "no usable diff base — treating every service as changed (bootstrap)"
+            services=$(find services -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | jq -R . | jq -sc .)
+            cli=true
+          else
+            changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+            services=$(echo "$changed" | awk -F/ '/^services\//{print $2}' | sort -u | jq -R . | jq -sc .)
+            if echo "$changed" | grep -q '^platform-cli/'; then cli=true; else cli=false; fi
+          fi
+          echo "services=$services" >> "$GITHUB_OUTPUT"
+          echo "cli=$cli" >> "$GITHUB_OUTPUT"
+          echo "promoting services: $services (cli image: $cli)"
+
+  promote:
+    needs: discover
+    if: needs.discover.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # cosign keyless signing
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.discover.outputs.services) }}
+    env:
+      IMAGE: ghcr.io/acr86/andamio/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: imjasonh/setup-crane@31b88efe9de28ae0ffa220711af4b60be9435f6e # v0.4
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote the tested digest (or fall back to a bootstrap build)
+        id: promote
+        run: |
+          pr=$(git log -1 --format=%s "$GITHUB_SHA" | grep -oE '#[0-9]+' | head -n1 | tr -d '#' || true)
+          digest=""
+          if [ -n "$pr" ] && digest=$(crane digest "$IMAGE:pr-$pr" 2>/dev/null); then
+            echo "promoting $IMAGE@$digest (tested in PR #$pr) -> :main"
+            crane tag "$IMAGE@$digest" main
+            crane tag "$IMAGE@$digest" "sha-$(git rev-parse --short "$GITHUB_SHA")"
+          else
+            echo "no PR-tested image found — bootstrap build"
+            docker build -t "$IMAGE:main" "services/${{ matrix.service }}"
+            docker push "$IMAGE:main"
+            digest=$(crane digest "$IMAGE:main")
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Sign the promoted digest (keyless)
+        run: cosign sign --yes "$IMAGE@${{ steps.promote.outputs.digest }}"
+
+      - name: SBOM for the promoted digest
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.promote.outputs.digest }}
+          artifact-name: sbom-${{ matrix.service }}.spdx.json
+
+  cli-image:
+    # The janitor CronJob runs this image. It is built here (its tests gated
+    # the PR) rather than promoted: the CLI has no per-PR image stream.
+    needs: discover
+    if: needs.discover.outputs.cli == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    env:
+      IMAGE: ghcr.io/acr86/andamio/platform-cli
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: platform-cli
+          push: true
+          tags: ${{ env.IMAGE }}:main
+          cache-from: type=gha,scope=platform-cli
+          cache-to: type=gha,scope=platform-cli,mode=max
+      - name: Sign
+        run: cosign sign --yes "$IMAGE@${{ steps.build.outputs.digest }}"
