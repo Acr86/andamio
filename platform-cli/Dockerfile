@@ -16,6 +16,7 @@ RUN groupadd --gid 10001 app && \
     useradd --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-USER app
+# Numeric UID: kubelets enforcing runAsNonRoot cannot verify a named user.
+USER 10001:10001
 ENTRYPOINT ["platform"]
 CMD ["--help"]

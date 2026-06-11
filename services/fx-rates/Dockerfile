@@ -18,6 +18,7 @@ RUN groupadd --gid 10001 app && \
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" \
     SERVICE_NAME=fx-rates
-USER app
+# Numeric UID: kubelets enforcing runAsNonRoot cannot verify a named user.
+USER 10001:10001
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
