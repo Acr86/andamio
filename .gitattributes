@@ -1,0 +1,8 @@
+# Normalize line endings: this repo is developed on Windows but every script
+# must run unmodified on the Linux CI runners and on reviewers' machines.
+* text=auto eol=lf
+
+# Binary assets
+*.png binary
+*.gif binary
+*.ico binary
