@@ -1,0 +1,10 @@
+name: {{ service_name }}
+kind: service
+owner: {{ owner }}
+description: {{ description }}
+tier: {{ tier }}
+lifecycle: experimental
+language: python
+template: fastapi-service
+links:
+  source: services/{{ service_name }}

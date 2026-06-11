@@ -1,0 +1,43 @@
+# Golden-path template: FastAPI service.
+#
+# Renders relative to the repository root and produces, in one pass:
+#   services/<name>/                      the service source tree
+#   deploy/kustomize/services/<name>/     base + overlays (local, preview)
+#   catalog/<name>.yaml                   the catalog entry
+#
+# There is deliberately no separate "register the service" step: if the
+# template ran, the service exists everywhere it needs to exist.
+#
+# Scaffolds always render from committed template state (vcs_ref=HEAD):
+# a service is never generated from someone's dirty working tree.
+
+_answers_file: "services/{{ service_name }}/.copier-answers.yml"
+_min_copier_version: "9.4.0"
+
+service_name:
+  type: str
+  help: Service name (kebab-case, e.g. fx-rates)
+  validator: >-
+    {% if not (service_name | regex_search('^[a-z][a-z0-9-]{1,40}[a-z0-9]$')) %}
+    service_name must be kebab-case: lowercase letters, digits and hyphens
+    {% endif %}
+
+owner:
+  type: str
+  help: Owning team (appears in the catalog and on-call routing)
+
+tier:
+  type: str
+  help: Criticality tier. t1/t2 require a linked runbook before `platform validate` passes.
+  default: t3
+  choices: [t1, t2, t3]
+
+description:
+  type: str
+  help: One-line description for the catalog
+  default: A new service scaffolded from the golden path.
+
+port:
+  type: int
+  help: Container port the service listens on
+  default: 8000

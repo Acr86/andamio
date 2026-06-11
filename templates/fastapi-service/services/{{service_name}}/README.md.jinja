@@ -1,0 +1,33 @@
+# {{ service_name }}
+
+{{ description }}
+
+Owned by **{{ owner }}** · tier **{{ tier }}** · scaffolded from the `fastapi-service` golden path.
+
+## Develop
+
+```bash
+cd services/{{ service_name }}
+uv run --extra dev pytest        # run the test suite
+uv run uvicorn app.main:app --reload --port {{ port }}
+```
+
+## Endpoints the platform relies on
+
+| Path | Purpose |
+|---|---|
+| `/healthz` | liveness probe |
+| `/readyz` | readiness probe |
+| `/metrics` | Prometheus scrape target (golden-signal HTTP metrics) |
+
+## Deploy
+
+Nothing to configure: `deploy/kustomize/services/{{ service_name }}/` was rendered
+alongside this service and GitOps picks it up on merge. The image is built, scanned
+and published by CI; the deployed tag is promoted by digest, never rebuilt.
+
+To update this service when the golden-path template evolves:
+
+```bash
+cd services/{{ service_name }} && copier update
+```

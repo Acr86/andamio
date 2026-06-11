@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ service_name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ service_name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ service_name }}
+      annotations:
+        # Annotation-based scrape discovery: services stay CRD-free, so the
+        # core platform runs even when the observability stack is not installed.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ port }}"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          image: ghcr.io/acr86/andamio/{{ service_name }}:latest
+          ports:
+            - name: http
+              containerPort: {{ port }}
+          env:
+            - name: SERVICE_NAME
+              value: {{ service_name }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
