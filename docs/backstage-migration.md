@@ -37,11 +37,13 @@ name: fx-rates
 kind: service
 owner: team-markets
 description: "Reference FX quotes service: serves indicative exchange rates with golden-signal metrics."
-tier: t3
-lifecycle: experimental
+tier: t2
+lifecycle: production
 language: python
 template: fastapi-service
 links:
+  runbook: docs/runbooks/rb-002-fast-burn-slo.md
+  dashboard: http://grafana.127.0.0.1.nip.io:8080/d/service-golden-signals
   source: services/fx-rates
 ```
 
@@ -54,20 +56,26 @@ metadata:
   name: fx-rates
   description: "Reference FX quotes service: serves indicative exchange rates with golden-signal metrics."
   labels:
-    andamio.dev/tier: t3
+    andamio.dev/tier: t2
   tags:
     - python
   annotations:
     andamio.dev/scaffolded-from: fastapi-service
     backstage.io/source-location: url:https://github.com/Acr86/andamio/tree/main/services/fx-rates
   links:
+    - url: https://github.com/Acr86/andamio/blob/main/docs/runbooks/rb-002-fast-burn-slo.md
+      title: Runbook
+      icon: docs
+    - url: http://grafana.127.0.0.1.nip.io:8080/d/service-golden-signals
+      title: Dashboard
+      icon: dashboard
     - url: https://github.com/Acr86/andamio/tree/main/services/fx-rates
       title: Source
       icon: code
 spec:
   type: service
   owner: group:team-markets
-  lifecycle: experimental
+  lifecycle: production
 ```
 
 ## Scaffolder mapping
