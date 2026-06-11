@@ -1,0 +1,29 @@
+# Dashboards and alert rules as code, from observability/ in this repo.
+# Decoupled from the stack Application so a dashboard change never touches
+# the Prometheus installation (and syncs in seconds, not minutes).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-config
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Acr86/andamio.git
+    targetRevision: main
+    path: observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

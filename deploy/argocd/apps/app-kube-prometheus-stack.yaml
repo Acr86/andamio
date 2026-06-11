@@ -1,0 +1,123 @@
+# Observability stack, installed the same way everything else is: as an
+# ArgoCD Application. The values below are deliberately opinionated for a
+# single-node platform: control-plane scrapes that k3s cannot serve are off,
+# retention is short, and dashboards/rules come from this repository (the
+# selectors ignore helm-release labels) — observability config is platform
+# code, not chart configuration.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 77.14.0
+    helm:
+      valuesObject:
+        fullnameOverride: kube-prometheus-stack
+        defaultRules:
+          create: true
+        # k3s embeds these control-plane components; scraping them produces
+        # permanently-red targets and alert noise. Off, deliberately.
+        kubeEtcd:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeControllerManager:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        alertmanager:
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 100m
+                memory: 128Mi
+        kube-state-metrics:
+          # Preview-namespace labels feed the platform-overview dashboard
+          # and the janitor alerts.
+          metricLabelsAllowlist:
+            - namespaces=[andamio.dev/preview,andamio.dev/pr]
+        grafana:
+          defaultDashboardsEnabled: false
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            hosts:
+              - grafana.127.0.0.1.nip.io
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+        prometheus:
+          prometheusSpec:
+            retention: 2d
+            resources:
+              requests:
+                cpu: 100m
+                memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+            # Rules and monitors are selected from the cluster, not from
+            # helm-release labels: observability/ in this repo is the source.
+            ruleSelectorNilUsesHelmValues: false
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            additionalScrapeConfigs:
+              # Annotation-based discovery: services declare prometheus.io/*
+              # pod annotations and stay CRD-free (see the golden-path
+              # template). The app label becomes the `service` label.
+              - job_name: annotated-pods
+                kubernetes_sd_configs:
+                  - role: pod
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+                    action: keep
+                    regex: "true"
+                  - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                    action: replace
+                    regex: (.+)
+                    target_label: __metrics_path__
+                  - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                    action: replace
+                    regex: ([^:]+)(?::\d+)?;(\d+)
+                    replacement: $1:$2
+                    target_label: __address__
+                  - source_labels: [__meta_kubernetes_namespace]
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    target_label: pod
+                  - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                    target_label: service
+              - job_name: argocd
+                static_configs:
+                  - targets:
+                      - argocd-metrics.argocd.svc:8082
+                      - argocd-server-metrics.argocd.svc:8083
+                      - argocd-applicationset-controller.argocd.svc:8080
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the CRDs exceed the annotation size limit
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 2m

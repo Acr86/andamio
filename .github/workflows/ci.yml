@@ -144,7 +144,7 @@ jobs:
       - name: Render and check every kustomize target
         run: |
           mkdir -p rendered
-          for overlay in deploy/kustomize/services/*/overlays/* deploy/kustomize/platform; do
+          for overlay in deploy/kustomize/services/*/overlays/* deploy/kustomize/platform observability; do
             name=$(echo "$overlay" | tr '/' '_')
             kubectl kustomize "$overlay" > "rendered/${name}.yaml"
           done

@@ -1,0 +1,110 @@
+{
+  "uid": "platform-overview",
+  "title": "Platform Overview",
+  "tags": ["andamio", "platform"],
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-3h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Applications synced",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "sum(argocd_app_info{sync_status=\"Synced\"})", "legendFormat": "synced", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Applications NOT synced",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        { "expr": "sum(argocd_app_info{sync_status!=\"Synced\"}) or vector(0)", "legendFormat": "out of sync", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Preview environments alive",
+      "description": "Namespaces labelled andamio.dev/preview=true. The janitor keeps this from growing unbounded.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "count(kube_namespace_labels{label_andamio_dev_preview=\"true\"}) or vector(0)", "legendFormat": "previews", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Pods running",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "targets": [
+        { "expr": "count(kube_pod_status_phase{phase=\"Running\"} == 1)", "legendFormat": "pods", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": {}, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Application health over time",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        { "expr": "sum by (health_status) (argocd_app_info)", "legendFormat": "{{health_status}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cluster CPU usage (cores)",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 5 },
+      "targets": [
+        { "expr": "sum(rate(container_cpu_usage_seconds_total{image!=\"\"}[5m]))", "legendFormat": "cores in use", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Cluster memory working set",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 5 },
+      "targets": [
+        { "expr": "sum(container_memory_working_set_bytes{image!=\"\"})", "legendFormat": "working set", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Pods by namespace",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "expr": "count by (namespace) (kube_pod_info)", "legendFormat": "{{namespace}}", "refId": "A" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Janitor job outcomes",
+      "description": "preview-janitor CronJob runs in platform-system. Failures here mean preview environments stop being reclaimed (RB-001).",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "expr": "sum(kube_job_status_succeeded{namespace=\"platform-system\"}) or vector(0)", "legendFormat": "succeeded", "refId": "A" },
+        { "expr": "sum(kube_job_status_failed{namespace=\"platform-system\"}) or vector(0)", "legendFormat": "failed", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 10 } }, "overrides": [] }
+    }
+  ]
+}

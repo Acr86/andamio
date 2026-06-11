@@ -1,0 +1,43 @@
+# Platform self-monitoring: the machinery that ships software gets the same
+# alerting discipline as the software. Every alert links the runbook that
+# resolves it.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: platform-health
+spec:
+  groups:
+    - name: platform.gitops
+      rules:
+        - alert: ArgoAppOutOfSyncTooLong
+          # Out of sync for 30 minutes means auto-sync is failing and
+          # retrying, not that someone just merged.
+          expr: sum by (name) (argocd_app_info{sync_status!="Synced"}) > 0
+          for: 30m
+          labels:
+            severity: ticket
+          annotations:
+            summary: "ArgoCD application {{ $labels.name }} cannot reach Synced"
+            runbook_url: https://github.com/Acr86/andamio/blob/main/docs/runbooks/rb-003-rollback.md
+
+        - alert: ArgoAppDegraded
+          expr: sum by (name) (argocd_app_info{health_status="Degraded"}) > 0
+          for: 10m
+          labels:
+            severity: page
+          annotations:
+            summary: "ArgoCD application {{ $labels.name }} is Degraded"
+            runbook_url: https://github.com/Acr86/andamio/blob/main/docs/runbooks/rb-003-rollback.md
+
+    - name: platform.previews
+      rules:
+        - alert: PreviewJanitorFailing
+          # The cost-control loop is broken: previews will accumulate.
+          expr: |
+            sum(kube_job_status_failed{namespace="platform-system", job_name=~"preview-janitor.*"}) > 0
+          for: 15m
+          labels:
+            severity: ticket
+          annotations:
+            summary: the preview-environment janitor is failing
+            runbook_url: https://github.com/Acr86/andamio/blob/main/docs/runbooks/rb-001-preview-not-collected.md

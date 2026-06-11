@@ -1,0 +1,24 @@
+# Observability as code: dashboards are ConfigMaps the Grafana sidecar
+# auto-loads; alert rules are PrometheusRule resources. Editing a JSON file
+# here and merging IS the dashboard deployment process.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: observability
+resources:
+  - alerts/slo-burn-rate.yaml
+  - alerts/platform.yaml
+configMapGenerator:
+  - name: dashboard-platform-overview
+    files:
+      - dashboards/platform-overview.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
+  - name: dashboard-service-golden-signals
+    files:
+      - dashboards/service-golden-signals.json
+    options:
+      labels:
+        grafana_dashboard: "1"
+      disableNameSuffixHash: true
