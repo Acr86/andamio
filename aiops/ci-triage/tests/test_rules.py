@@ -28,6 +28,9 @@ class TestTaxonomy:
             ("trivy-gate.log", "vulnerability-gate"),
             ("network-flake.log", "infra-flake"),
             ("conftest-policy.log", "policy-violation"),
+            # Both taught by this repository's own first red pipeline.
+            ("uv-missing-extra.log", "dependency-resolution"),
+            ("ingress-502.log", "kubernetes-rollout"),
         ],
     )
     def test_fixture_classifies_as(self, fixture: str, category: str) -> None:

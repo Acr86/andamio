@@ -105,7 +105,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "platform-cli/uv.lock"
       - name: CLI test suite (includes template golden tests)
-        run: uv run --project platform-cli pytest platform-cli/tests
+        run: uv run --project platform-cli --extra dev pytest platform-cli/tests
 
   service-ci:
     needs: changes
@@ -173,6 +173,12 @@ jobs:
         run: bash scripts/deploy-local.sh fx-rates
       - name: Service answers through the platform ingress
         run: |
+          # Traefik picks the Ingress up moments after the rollout completes;
+          # tolerate that propagation window, then assert hard.
+          for _ in $(seq 1 30); do
+            curl -fsS http://fx-rates.127.0.0.1.nip.io:8080/healthz && break
+            sleep 2
+          done
           curl -fsS http://fx-rates.127.0.0.1.nip.io:8080/healthz
           curl -fsS "http://fx-rates.127.0.0.1.nip.io:8080/rates?base=MXN"
       - name: Janitor safety smoke (refuses to reap fresh namespaces)

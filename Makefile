@@ -47,7 +47,7 @@ deploy-local: ## build + import + deploy one service: make deploy-local SERVICE=
 	bash scripts/deploy-local.sh $(SERVICE)
 
 test: ## every test suite in the repository (CLI, services, aiops)
-	uv run --project platform-cli pytest platform-cli/tests
+	uv run --project platform-cli --extra dev pytest platform-cli/tests
 	@for svc in services/*/; do \
 	  echo "==> $$svc"; \
 	  (cd "$$svc" && uv run --extra dev --project . pytest); \

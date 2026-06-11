@@ -1,0 +1,4 @@
+2026-06-11T17:36:48.9011245Z Installed 1 package in 12ms
+2026-06-11T17:36:49.1505931Z error: Failed to spawn: `pytest`
+2026-06-11T17:36:49.1506826Z   Caused by: No such file or directory (os error 2)
+2026-06-11T17:36:49.2010031Z ##[error]Process completed with exit code 2.

@@ -66,13 +66,17 @@ RULES: tuple[Rule, ...] = (
     Rule(
         category="dependency-resolution",
         owner_hint="change author",
-        action="The resolver cannot satisfy the dependency set. Check the lockfile is "
-        "committed and consistent; pin or relax the conflicting constraint.",
+        action="The resolver cannot satisfy the dependency set, or a tool the step needs "
+        "was never installed into the environment (a missing extra/group is the classic). "
+        "Check the lockfile is committed and the run includes the extras the command needs.",
         patterns=_compile(
             r"No solution found when resolving",
             r"ResolutionImpossible",
             r"Could not find a version that satisfies",
             r"failed to resolve dependencies",
+            # Taught by a real failure: `uv run --project X pytest` without
+            # `--extra dev` spawns a binary that was never installed.
+            r"error: Failed to spawn",
         ),
     ),
     Rule(
@@ -97,6 +101,9 @@ RULES: tuple[Rule, ...] = (
             r"CrashLoopBackOff",
             r"error: timed out waiting for the condition",
             r"rollout status.*deadline exceeded",
+            # Taught by a real failure: the rollout succeeded but the ingress
+            # answered 502 before route propagation finished.
+            r"returned error: 50[23]",
         ),
     ),
     Rule(
