@@ -36,7 +36,8 @@ PAGE_TEMPLATE = """\
 </head>
 <body>
 <h1>andamio &mdash; service catalog</h1>
-<p class="sub">{{ entries | length }} entries. Generated from <code>catalog/*.yaml</code> by <code>platform catalog render</code>.</p>
+<p class="sub">{{ entries | length }} entries. Generated from <code>catalog/*.yaml</code>
+by <code>platform catalog render</code>.</p>
 <table>
 <thead>
 <tr><th>Name</th><th>Kind</th><th>Owner</th><th>Tier</th><th>Lifecycle</th><th>Description</th><th>Links</th></tr>

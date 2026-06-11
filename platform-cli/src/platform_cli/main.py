@@ -16,7 +16,9 @@ app = typer.Typer(
     help="Golden-path tooling: scaffold services, validate the catalog, manage previews.",
     no_args_is_help=True,
 )
-new_app = typer.Typer(help="Scaffold new resources from golden-path templates.", no_args_is_help=True)
+new_app = typer.Typer(
+    help="Scaffold new resources from golden-path templates.", no_args_is_help=True
+)
 preview_app = typer.Typer(help="Manage ephemeral preview environments.", no_args_is_help=True)
 catalog_app = typer.Typer(help="Catalog utilities.", no_args_is_help=True)
 app.add_typer(new_app, name="new")
@@ -59,8 +61,13 @@ def new_service(
     root = _root()
     try:
         service_dir = scaffold.new_service(
-            root, name=name, template=template, owner=owner,
-            tier=tier, description=description, port=port,
+            root,
+            name=name,
+            template=template,
+            owner=owner,
+            tier=tier,
+            description=description,
+            port=port,
         )
     except scaffold.ScaffoldError as exc:
         err_console.print(f"[red]error:[/red] {exc}")
@@ -96,8 +103,12 @@ def list_entries() -> None:
     table.add_column("description", overflow="fold")
     for entry in entries:
         table.add_row(
-            entry.name, entry.kind.value, entry.owner,
-            entry.tier.value, entry.lifecycle.value, entry.description,
+            entry.name,
+            entry.kind.value,
+            entry.owner,
+            entry.tier.value,
+            entry.lifecycle.value,
+            entry.description,
         )
     console.print(table)
 

@@ -50,8 +50,8 @@ def summarize(job_name: str, classification: Classification) -> str | None:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             payload = json.loads(response.read())
-        return "".join(
-            block.get("text", "") for block in payload.get("content", [])
-        ).strip() or None
+        return (
+            "".join(block.get("text", "") for block in payload.get("content", [])).strip() or None
+        )
     except Exception:  # noqa: BLE001 - the summary is optional by contract
         return None

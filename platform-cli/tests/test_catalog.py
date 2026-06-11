@@ -65,7 +65,9 @@ class TestCrossChecks:
         runbook.parent.mkdir(parents=True)
         runbook.write_text("# rb", encoding="utf-8")
         write_entry(
-            tmp_repo, "fx-rates", tier="t1",
+            tmp_repo,
+            "fx-rates",
+            tier="t1",
             links={"runbook": "docs/runbooks/rb.md"},
         )
         _mkservice(tmp_repo, "fx-rates")
@@ -74,7 +76,9 @@ class TestCrossChecks:
 
     def test_runbook_link_must_exist_on_disk(self, tmp_repo: Path) -> None:
         write_entry(
-            tmp_repo, "fx-rates", tier="t2",
+            tmp_repo,
+            "fx-rates",
+            tier="t2",
             links={"runbook": "docs/runbooks/does-not-exist.md"},
         )
         _mkservice(tmp_repo, "fx-rates")

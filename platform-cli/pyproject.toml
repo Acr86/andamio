@@ -38,6 +38,8 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+# B008: calling typer.Option in parameter defaults is Typer's documented API.
+ignore = ["B008"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

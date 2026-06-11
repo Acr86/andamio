@@ -121,9 +121,12 @@ def _kubectl(*args: str) -> str:
 
 def list_preview_namespaces() -> list[Namespace]:
     raw = _kubectl(
-        "get", "namespaces",
-        "-l", f"{PREVIEW_LABEL}=true",
-        "-o", "json",
+        "get",
+        "namespaces",
+        "-l",
+        f"{PREVIEW_LABEL}=true",
+        "-o",
+        "json",
     )
     items = json.loads(raw).get("items", [])
     return [
@@ -148,15 +151,15 @@ def _parse_k8s_timestamp(raw: str | None) -> float | None:
 def list_application_destinations(argocd_namespace: str = "argocd") -> set[str]:
     """Destination namespaces of every existing ArgoCD Application."""
     raw = _kubectl(
-        "get", "applications.argoproj.io",
-        "-n", argocd_namespace,
-        "-o", "json",
+        "get",
+        "applications.argoproj.io",
+        "-n",
+        argocd_namespace,
+        "-o",
+        "json",
     )
     items = json.loads(raw).get("items", [])
-    return {
-        item.get("spec", {}).get("destination", {}).get("namespace", "")
-        for item in items
-    }
+    return {item.get("spec", {}).get("destination", {}).get("namespace", "") for item in items}
 
 
 def create_preview_namespace(pr_number: int, ttl_seconds: int) -> str:
@@ -164,7 +167,9 @@ def create_preview_namespace(pr_number: int, ttl_seconds: int) -> str:
     deadline = int(time.time()) + ttl_seconds
     _kubectl("create", "namespace", name)
     _kubectl(
-        "label", "namespace", name,
+        "label",
+        "namespace",
+        name,
         f"{PREVIEW_LABEL}=true",
         f"{EXPIRES_LABEL}={deadline}",
         "--overwrite",

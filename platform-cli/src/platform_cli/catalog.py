@@ -111,14 +111,17 @@ def cross_check(root: Path, entries: list[Entry]) -> list[str]:
     the code says, and the check is cheap enough to run on every push.
     """
     problems: list[str] = []
-    by_name = {entry.name: entry for entry in entries}
 
-    services_on_disk = {
-        path.name for path in repo.services_dir(root).iterdir() if path.is_dir()
-    } if repo.services_dir(root).is_dir() else set()
-    manifests_on_disk = {
-        path.name for path in repo.kustomize_services_dir(root).iterdir() if path.is_dir()
-    } if repo.kustomize_services_dir(root).is_dir() else set()
+    services_on_disk = (
+        {path.name for path in repo.services_dir(root).iterdir() if path.is_dir()}
+        if repo.services_dir(root).is_dir()
+        else set()
+    )
+    manifests_on_disk = (
+        {path.name for path in repo.kustomize_services_dir(root).iterdir() if path.is_dir()}
+        if repo.kustomize_services_dir(root).is_dir()
+        else set()
+    )
 
     service_entries = {e.name for e in entries if e.kind is Kind.SERVICE}
 

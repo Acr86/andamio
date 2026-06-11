@@ -48,9 +48,7 @@ class TestRenderedArtifacts:
         assert (base / "overlays" / "preview" / "kustomization.yaml").is_file()
 
     def test_no_unrendered_jinja_left_behind(self, rendered: Path) -> None:
-        leftovers = [
-            p for p in (rendered / "services" / "demo-ledger").rglob("*.jinja")
-        ]
+        leftovers = [p for p in (rendered / "services" / "demo-ledger").rglob("*.jinja")]
         assert leftovers == []
 
     def test_answers_file_records_provenance(self, rendered: Path) -> None:
@@ -69,8 +67,13 @@ class TestRenderedArtifacts:
     def test_deployment_pins_hardened_security_context(self, rendered: Path) -> None:
         deployment = yaml.safe_load(
             (
-                rendered / "deploy" / "kustomize" / "services" / "demo-ledger"
-                / "base" / "deployment.yaml"
+                rendered
+                / "deploy"
+                / "kustomize"
+                / "services"
+                / "demo-ledger"
+                / "base"
+                / "deployment.yaml"
             ).read_text(encoding="utf-8")
         )
         pod = deployment["spec"]["template"]["spec"]
