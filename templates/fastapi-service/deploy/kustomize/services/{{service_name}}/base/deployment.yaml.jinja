@@ -25,6 +25,10 @@ spec:
       containers:
         - name: app
           image: ghcr.io/acr86/andamio/{{ service_name }}:latest
+          # The deployed tags are moving pointers advanced by digest
+          # promotion; without Always, a node's cached image silently
+          # outlives the release that superseded it.
+          imagePullPolicy: Always
           ports:
             - name: http
               containerPort: {{ port }}
