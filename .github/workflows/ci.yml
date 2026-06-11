@@ -173,14 +173,25 @@ jobs:
         run: bash scripts/deploy-local.sh fx-rates
       - name: Service answers through the platform ingress
         run: |
-          # Traefik picks the Ingress up moments after the rollout completes;
-          # tolerate that propagation window, then assert hard.
-          for _ in $(seq 1 30); do
-            curl -fsS http://fx-rates.127.0.0.1.nip.io:8080/healthz && break
+          # Two sources of turbulence right after bootstrap: Traefik route
+          # propagation, and ArgoCD self-heal converging the same deployment
+          # the inner loop just touched (a rolling restart mid-probe). Require
+          # three consecutive successes — a single 200 can be the last gasp
+          # of a pod that is about to roll — and cap each probe so a hung
+          # gateway cannot eat the retry budget.
+          ok=0
+          for _ in $(seq 1 90); do
+            if curl -fsS --max-time 5 -o /dev/null http://fx-rates.127.0.0.1.nip.io:8080/healthz; then
+              ok=$((ok + 1))
+              [ "$ok" -ge 3 ] && break
+            else
+              ok=0
+            fi
             sleep 2
           done
-          curl -fsS http://fx-rates.127.0.0.1.nip.io:8080/healthz
-          curl -fsS "http://fx-rates.127.0.0.1.nip.io:8080/rates?base=MXN"
+          [ "$ok" -ge 3 ] || { echo "service never stabilized behind the ingress"; exit 1; }
+          curl -fsS --max-time 10 http://fx-rates.127.0.0.1.nip.io:8080/healthz
+          curl -fsS --max-time 10 "http://fx-rates.127.0.0.1.nip.io:8080/rates?base=MXN"
       - name: Janitor safety smoke (refuses to reap fresh namespaces)
         run: |
           kubectl create namespace pr-9999
